@@ -257,6 +257,17 @@ describe('plugin', () => {
     expect(after['tanks.fuel.dieselCans.capacity']).toBeCloseTo(0.045)
   })
 
+  it('drops changes still queued when the plugin stops', async () => {
+    await start()
+    const first = call(f, 'POST /api/sets/:id/fill', { id: 'dieselCans' })
+    const second = call(f, 'POST /api/sets/:id/fill', { id: 'petrolCans' })
+    plugin.stop()
+    expect((await first).code).toBe(404)
+    expect((await second).code).toBe(404)
+    const saved = JSON.parse(await readFile(join(dir, 'levels.json'), 'utf8'))
+    expect(saved).toEqual({ dieselCans: { '0-0': 0, '0-1': 0, '1-0': 0 }, petrolCans: { '0-0': 0 } })
+  })
+
   it('answers 503 and rejects PUTs while stopped', async () => {
     await start()
     plugin.stop()

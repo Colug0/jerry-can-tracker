@@ -140,10 +140,14 @@ export class Tracker {
    * Applies a change once the new levels are saved, so a reported success
    * survives a restart. Changes run one after another, each on the levels
    * the previous one left. Invalid input is rejected by the caller before
-   * this, synchronously; the returned promise rejects only with SaveFailed.
+   * this, synchronously; the returned promise rejects with SaveFailed, or
+   * NotFound when the plugin stopped before the change ran.
    */
   private mutate(set: CanSet, next: (current: Record<string, number>) => Record<string, number>): Promise<SetView> {
     const run = async (): Promise<SetView> => {
+      // A queued change must not overwrite the file once a restarted plugin
+      // has read it.
+      if (this.closed) throw new NotFound('the plugin is not running')
       const levels = next({ ...this.levels[set.id] })
       try {
         await this.store.save({ ...this.levels, [set.id]: levels })

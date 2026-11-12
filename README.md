@@ -73,7 +73,10 @@ PUT /signalk/v1/api/vessels/self/tanks/fuel/dieselCans/currentLevel
 ```
 
 `currentVolume` is in m³ (0.025 = 25 L), `currentLevel` a ratio from 0 to 1.
-Out-of-range values are answered with status 400.
+Out-of-range values are answered at once with status 400. A valid value is
+answered with `PENDING` and completes with status 200 once the new levels are
+saved (follow the `href` in the answer); a failed save completes with 500 and
+leaves the level unchanged.
 
 ### REST API
 
