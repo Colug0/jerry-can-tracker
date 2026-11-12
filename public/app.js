@@ -118,21 +118,32 @@ function setBusy(id, on) {
   if (el) for (const c of el.querySelectorAll('button, input')) c.disabled = on
 }
 
-async function change(id, path, body) {
+function bump(id) {
   revisions.set(id, revision(id) + 1)
+}
+
+async function change(id, path, body) {
+  bump(id)
   setBusy(id, true)
   try {
     renderSet(await post(path, body))
     showMessage('')
   } catch (error) {
     showMessage(error.message)
-    await refresh(true)
+    // Show the server's levels for this set again; a refresh already in
+    // flight may hold levels from before this attempt.
+    bump(id)
+    await refresh(id)
   } finally {
+    // The server switches to the new levels only once they are saved, so a
+    // refresh that started while this change ran may still carry old ones.
+    bump(id)
     setBusy(id, false)
   }
 }
 
-async function refresh(force = false) {
+/** Reloads all sets; `forceId` is rendered even while its change is busy. */
+async function refresh(forceId) {
   const started = new Map(revisions)
   try {
     const sets = await request('/sets')
@@ -140,11 +151,11 @@ async function refresh(force = false) {
     for (const el of [...setsEl.children]) if (!ids.includes(el.dataset.set)) el.remove()
     for (const set of sets) {
       if (revision(set.id) !== (started.get(set.id) ?? 0)) continue
-      if (force || !busy.has(set.id)) renderSet(set)
+      if (set.id === forceId || !busy.has(set.id)) renderSet(set)
     }
     if (sets.length === 0) {
       showMessage('No sets yet. Add sets of jerry cans in the plugin configuration (Server → Plugin Config → Jerry Can Tracker).', 'info')
-    } else if (messageEl.classList.contains('info') || !force) {
+    } else if (messageEl.classList.contains('info') || forceId === undefined) {
       showMessage('')
     }
   } catch (error) {
