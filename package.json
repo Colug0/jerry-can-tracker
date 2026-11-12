@@ -1,6 +1,6 @@
 {
   "name": "jerry-can-tracker",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Track sets of jerry cans (diesel, petrol, water, ...) as extra tanks in Signal K",
   "type": "module",
   "main": "dist/index.js",
