@@ -3,7 +3,7 @@ import { registerApi, type RouterLike } from './api.js'
 import { buildSets, reconcile } from './model.js'
 import { ConfigSchema } from './schema.js'
 import { LevelStore } from './store.js'
-import { BadValue, NotFound, setPath, Tracker } from './tracker.js'
+import { BadValue, errorStatus, NotFound, setPath, Tracker } from './tracker.js'
 
 const PLUGIN_ID = 'jerry-can-tracker'
 
@@ -14,25 +14,33 @@ export default function createPlugin(app: ServerAPI): Plugin {
   let tracker: Tracker | undefined
   let generation = 0
 
-  const putResult = (fn: () => void): ActionResult => {
-    try {
-      fn()
-      return { state: 'COMPLETED', statusCode: 200 }
-    } catch (error) {
-      const statusCode = error instanceof BadValue ? 400 : error instanceof NotFound ? 404 : 500
-      return { state: 'COMPLETED', statusCode, message: error instanceof Error ? error.message : String(error) }
-    }
-  }
+  const failed = (error: unknown): ActionResult => ({
+    state: 'COMPLETED',
+    statusCode: errorStatus(error),
+    message: error instanceof Error ? error.message : String(error)
+  })
 
-  const registerPut = (path: string, apply: (t: Tracker, value: unknown) => void): void => {
-    app.registerPutHandler('vessels.self', path, (_ctx, _path, value) =>
-      putResult(() => {
+  /**
+   * Bad values are answered at once; a valid change answers PENDING and
+   * completes once the new levels are saved.
+   */
+  const registerPut = (path: string, apply: (t: Tracker, value: unknown) => Promise<unknown>): void => {
+    app.registerPutHandler('vessels.self', path, (_ctx, _path, value, callback) => {
+      let pending: Promise<unknown>
+      try {
         // Handlers cannot be removed; one left over from an earlier start
         // finds no running tracker or no set with that id.
         if (!tracker) throw new NotFound('the plugin is not running')
-        apply(tracker, value)
-      })
-    )
+        pending = apply(tracker, value)
+      } catch (error) {
+        return failed(error)
+      }
+      pending.then(
+        () => callback({ state: 'COMPLETED', statusCode: 200 }),
+        (error: unknown) => callback(failed(error))
+      )
+      return { state: 'PENDING' }
+    })
   }
 
   const plugin: Plugin = {
@@ -63,13 +71,13 @@ export default function createPlugin(app: ServerAPI): Plugin {
               if (!Number.isFinite(level) || level < 0 || level > 1) {
                 throw new BadValue('currentLevel must be a ratio between 0 and 1')
               }
-              tr.setVolume(s.id, tr.view(s).capacity * level)
+              return tr.setVolume(s.id, tr.view(s).capacity * level)
             })
             registerPut(`${base}.currentVolume`, (tr, value) => {
               if (typeof value !== 'number' || !Number.isFinite(value)) {
                 throw new BadValue('currentVolume must be a number in m3')
               }
-              tr.setVolume(set.id, value * 1000)
+              return tr.setVolume(set.id, value * 1000)
             })
           }
           t.publish()

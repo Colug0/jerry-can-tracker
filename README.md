@@ -23,7 +23,7 @@ records which cans are full, empty or partly filled.
 
 | Setting | Meaning |
 |---|---|
-| Id | Last part of the Signal K path. Letters, digits and `_`, starting with a letter. |
+| Id | Last part of the Signal K path, unique across all sets. Letters, digits and `_`, starting with a letter. |
 | Name | Tank name shown in apps, for example "Diesel jerry cans". |
 | Tank kind | Signal K tank group: `fuel`, `freshWater`, `wasteWater`, `blackWater`, `lubrication`, `gas`, `ballast`, `liveWell`, `baitWell`. |
 | Contents | Optional: published as the tank type (`diesel`, `petrol`, `fresh water`, …). |
@@ -73,7 +73,10 @@ PUT /signalk/v1/api/vessels/self/tanks/fuel/dieselCans/currentLevel
 ```
 
 `currentVolume` is in m³ (0.025 = 25 L), `currentLevel` a ratio from 0 to 1.
-Out-of-range values are answered with status 400.
+Out-of-range values are answered at once with status 400. A valid value is
+answered with `PENDING` and completes with status 200 once the new levels are
+saved (follow the `href` in the answer); a failed save completes with 500 and
+leaves the level unchanged.
 
 ### REST API
 

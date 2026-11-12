@@ -47,12 +47,13 @@ export function buildSets(configured: unknown): { sets: CanSet[]; errors: string
       errors.push(`Set ${label}: invalid id "${id}"`)
       return
     }
-    const kind = (TANK_KINDS as readonly string[]).includes(s.kind as string) ? (s.kind as TankKind) : 'fuel'
-    const pathKey = `${kind}.${id}`
-    if (seen.has(pathKey)) {
-      errors.push(`Set ${label}: tanks.${pathKey} is used twice`)
+    // Fill levels, API routes and the webapp key sets by id alone, so an id
+    // must be unique across all tank kinds.
+    if (seen.has(id)) {
+      errors.push(`Set ${label}: id "${id}" is used twice`)
       return
     }
+    const kind = (TANK_KINDS as readonly string[]).includes(s.kind as string) ? (s.kind as TankKind) : 'fuel'
     const cans: Can[] = []
     ;(Array.isArray(s.cans) ? s.cans : []).forEach((c, line) => {
       const capacity = Number(c?.capacity)
@@ -70,7 +71,7 @@ export function buildSets(configured: unknown): { sets: CanSet[]; errors: string
       errors.push(`Set ${label}: no cans`)
       return
     }
-    seen.add(pathKey)
+    seen.add(id)
     const fluid = (FLUID_TYPES as readonly string[]).includes(s.fluid as string) ? (s.fluid as string) : undefined
     sets.push({ id, name: typeof s.name === 'string' && s.name !== '' ? s.name : id, kind, fluid, cans })
   })

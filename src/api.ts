@@ -1,4 +1,4 @@
-import { BadValue, NotFound, type Tracker } from './tracker.js'
+import { errorStatus, type Tracker } from './tracker.js'
 
 interface Req {
   params?: Record<string, string>
@@ -42,12 +42,15 @@ export function registerApi(router: RouterLike, tracker: () => Tracker | undefin
         res.status(503).json({ error: 'the plugin is not running' })
         return
       }
-      try {
-        res.json(fn(t, req))
-      } catch (error) {
-        const code = error instanceof NotFound ? 404 : error instanceof BadValue ? 400 : 500
-        res.status(code).json({ error: error instanceof Error ? error.message : String(error) })
-      }
+      // fn throws for bad input and returns a promise for changes, which
+      // settles once the new levels are saved.
+      Promise.resolve()
+        .then(() => fn(t, req))
+        .then(
+          (data) => res.json(data),
+          (error: unknown) =>
+            res.status(errorStatus(error)).json({ error: error instanceof Error ? error.message : String(error) })
+        )
     }
   const param = (req: Req, name: string): string => req.params?.[name] ?? ''
 

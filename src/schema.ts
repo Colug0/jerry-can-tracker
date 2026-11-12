@@ -48,7 +48,7 @@ const SetSchema = Type.Object({
   id: Type.String({
     title: 'Id',
     description:
-      'Last part of the Signal K path: letters, digits and _, starting with a letter. "dieselCans" with kind "fuel" gives tanks.fuel.dieselCans',
+      'Last part of the Signal K path, unique across all sets: letters, digits and _, starting with a letter. "dieselCans" with kind "fuel" gives tanks.fuel.dieselCans',
     pattern: SET_ID_PATTERN
   }),
   name: Type.String({ title: 'Name', description: 'Shown in apps as the tank name, for example "Diesel jerry cans"' }),

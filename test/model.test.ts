@@ -34,12 +34,13 @@ describe('buildSets', () => {
     ])
     expect(sets.map((s) => s.id)).toEqual(['dieselCans'])
     expect(errors).toHaveLength(5) // the zero-capacity set reports its can and "no cans"
-    expect(errors[1]).toContain('tanks.fuel.dieselCans is used twice')
+    expect(errors[1]).toContain('id "dieselCans" is used twice')
   })
 
-  it('allows the same id under different tank kinds', () => {
-    const { sets } = buildSets([diesel, { ...diesel, kind: 'freshWater', fluid: 'fresh water' }])
-    expect(sets).toHaveLength(2)
+  it('rejects the same id under a different tank kind', () => {
+    const { sets, errors } = buildSets([diesel, { ...diesel, kind: 'freshWater', fluid: 'fresh water' }])
+    expect(sets.map((s) => s.kind)).toEqual(['fuel'])
+    expect(errors).toEqual(['Set "Diesel": id "dieselCans" is used twice'])
   })
 
   it('handles a missing configuration', () => {
