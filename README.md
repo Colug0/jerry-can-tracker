@@ -23,7 +23,7 @@ records which cans are full, empty or partly filled.
 
 | Setting | Meaning |
 |---|---|
-| Id | Last part of the Signal K path. Letters, digits and `_`, starting with a letter. |
+| Id | Last part of the Signal K path, unique across all sets. Letters, digits and `_`, starting with a letter. |
 | Name | Tank name shown in apps, for example "Diesel jerry cans". |
 | Tank kind | Signal K tank group: `fuel`, `freshWater`, `wasteWater`, `blackWater`, `lubrication`, `gas`, `ballast`, `liveWell`, `baitWell`. |
 | Contents | Optional: published as the tank type (`diesel`, `petrol`, `fresh water`, …). |

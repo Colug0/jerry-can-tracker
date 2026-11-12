@@ -1,7 +1,7 @@
 import { lstat, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { ActionHandler, Plugin, ServerAPI } from '@signalk/server-api'
+import type { ActionHandler, ActionResult, Plugin, ServerAPI } from '@signalk/server-api'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import createPlugin from '../src/index.js'
 import { LevelStore } from '../src/store.js'
@@ -58,22 +58,35 @@ function fakeRouter(f: Fake) {
   return { ...reg('admin'), access: (level: string) => reg(level) }
 }
 
-function call(f: Fake, route: string, params: Record<string, string> = {}, body?: unknown): FakeRes {
+/** Calls a route and resolves once it has answered. */
+function call(f: Fake, route: string, params: Record<string, string> = {}, body?: unknown): Promise<FakeRes> {
   const r = f.routes.get(route)
   if (!r) throw new Error(`no route ${route}`)
-  const res: FakeRes = {
-    code: 200,
-    data: undefined,
-    status(code) {
-      this.code = code
-      return this
-    },
-    json(value) {
-      this.data = value
+  return new Promise((resolve) => {
+    const res: FakeRes = {
+      code: 200,
+      data: undefined,
+      status(code) {
+        this.code = code
+        return this
+      },
+      json(value) {
+        this.data = value
+        resolve(this)
+      }
     }
-  }
-  r.handler({ params, body }, res)
-  return res
+    r.handler({ params, body }, res)
+  })
+}
+
+/** Sends a PUT and resolves with the final result (after PENDING, the callback's). */
+async function put(f: Fake, path: string, value: unknown): Promise<ActionResult> {
+  const handler = f.puts.get(path)
+  if (!handler) throw new Error(`no PUT handler for ${path}`)
+  let done: (r: ActionResult) => void = () => {}
+  const later = new Promise<ActionResult>((resolve) => (done = resolve))
+  const first = handler('vessels.self', path, value, done)
+  return first.state === 'PENDING' ? later : first
 }
 
 function latest(f: Fake): Record<string, unknown> {
@@ -140,23 +153,23 @@ describe('plugin', () => {
 
   it('accepts a PUT on currentVolume and fills cans in order', async () => {
     await start()
-    const result = f.puts.get('tanks.fuel.dieselCans.currentVolume')!('vessels.self', 'x', 0.03, () => {})
-    expect(result).toMatchObject({ state: 'COMPLETED', statusCode: 200 })
+    const first = f.puts.get('tanks.fuel.dieselCans.currentVolume')!('vessels.self', 'x', 0.03, () => {})
+    expect(first).toEqual({ state: 'PENDING' })
+    expect(await put(f, 'tanks.fuel.dieselCans.currentVolume', 0.03)).toMatchObject({ state: 'COMPLETED', statusCode: 200 })
     expect(latest(f)['tanks.fuel.dieselCans.currentVolume']).toBeCloseTo(0.03)
-    const view = call(f, 'GET /api/sets/:id', { id: 'dieselCans' }).data as { cans: Array<{ level: number }> }
+    const view = (await call(f, 'GET /api/sets/:id', { id: 'dieselCans' })).data as { cans: Array<{ level: number }> }
     expect(view.cans.map((c) => c.level)).toEqual([1, 0.5, 0])
   })
 
   it('accepts a PUT on currentLevel and rejects out-of-range values', async () => {
     await start()
-    const put = f.puts.get('tanks.fuel.petrolCans.currentLevel')!
-    expect(put('vessels.self', 'x', 0.5, () => {})).toMatchObject({ statusCode: 200 })
+    const level = 'tanks.fuel.petrolCans.currentLevel'
+    expect(await put(f, level, 0.5)).toMatchObject({ statusCode: 200 })
     expect(latest(f)['tanks.fuel.petrolCans.currentVolume']).toBeCloseTo(0.005)
-    expect(put('vessels.self', 'x', 1.5, () => {})).toMatchObject({ statusCode: 400 })
-    expect(put('vessels.self', 'x', 'full', () => {})).toMatchObject({ statusCode: 400 })
-    expect(
-      f.puts.get('tanks.fuel.petrolCans.currentVolume')!('vessels.self', 'x', 0.02, () => {})
-    ).toMatchObject({ statusCode: 400 })
+    // bad values are answered at once, without PENDING
+    expect(f.puts.get(level)!('vessels.self', level, 1.5, () => {})).toMatchObject({ state: 'COMPLETED', statusCode: 400 })
+    expect(await put(f, level, 'full')).toMatchObject({ statusCode: 400 })
+    expect(await put(f, 'tanks.fuel.petrolCans.currentVolume', 0.02)).toMatchObject({ statusCode: 400 })
   })
 
   it('serves the webapp API with the right access levels', async () => {
@@ -164,28 +177,54 @@ describe('plugin', () => {
     expect(f.routes.get('GET /api/sets')!.access).toBe('readonly')
     expect(f.routes.get('POST /api/sets/:id/cans/:key')!.access).toBe('readwrite')
 
-    let res = call(f, 'POST /api/sets/:id/fill', { id: 'dieselCans' })
+    let res = await call(f, 'POST /api/sets/:id/fill', { id: 'dieselCans' })
     expect(res.data).toMatchObject({ volume: 45, level: 1 })
-    res = call(f, 'POST /api/sets/:id/cans/:key', { id: 'dieselCans', key: '1-0' }, { level: 0 })
+    res = await call(f, 'POST /api/sets/:id/cans/:key', { id: 'dieselCans', key: '1-0' }, { level: 0 })
     expect(res.data).toMatchObject({ volume: 40 })
-    res = call(f, 'POST /api/sets/:id/volume', { id: 'dieselCans' }, { volume: 12 })
+    res = await call(f, 'POST /api/sets/:id/volume', { id: 'dieselCans' }, { volume: 12 })
     expect(res.data).toMatchObject({ volume: 12 })
-    res = call(f, 'POST /api/sets/:id/empty', { id: 'dieselCans' })
+    res = await call(f, 'POST /api/sets/:id/empty', { id: 'dieselCans' })
     expect(res.data).toMatchObject({ volume: 0 })
 
-    expect(call(f, 'POST /api/sets/:id/fill', { id: 'nope' }).code).toBe(404)
-    expect(call(f, 'POST /api/sets/:id/cans/:key', { id: 'dieselCans', key: '7-0' }, { level: 1 }).code).toBe(404)
-    expect(call(f, 'POST /api/sets/:id/cans/:key', { id: 'dieselCans', key: '0-0' }, { level: 2 }).code).toBe(400)
-    expect(call(f, 'POST /api/sets/:id/volume', { id: 'dieselCans' }, { volume: 46 }).code).toBe(400)
+    expect((await call(f, 'POST /api/sets/:id/fill', { id: 'nope' })).code).toBe(404)
+    expect((await call(f, 'POST /api/sets/:id/cans/:key', { id: 'dieselCans', key: '7-0' }, { level: 1 })).code).toBe(404)
+    expect((await call(f, 'POST /api/sets/:id/cans/:key', { id: 'dieselCans', key: '0-0' }, { level: 2 })).code).toBe(400)
+    expect((await call(f, 'POST /api/sets/:id/volume', { id: 'dieselCans' }, { volume: 46 })).code).toBe(400)
+  })
+
+  it('applies concurrent changes one after another', async () => {
+    await start()
+    const results = await Promise.all([
+      call(f, 'POST /api/sets/:id/cans/:key', { id: 'dieselCans', key: '0-0' }, { level: 1 }),
+      call(f, 'POST /api/sets/:id/cans/:key', { id: 'dieselCans', key: '0-1' }, { level: 1 }),
+      call(f, 'POST /api/sets/:id/cans/:key', { id: 'dieselCans', key: '1-0' }, { level: 0.5 })
+    ])
+    expect(results.map((r) => (r.data as { volume: number }).volume)).toEqual([20, 40, 42.5])
+    const saved = JSON.parse(await readFile(join(dir, 'levels.json'), 'utf8'))
+    expect(saved.dieselCans).toEqual({ '0-0': 1, '0-1': 1, '1-0': 0.5 })
+  })
+
+  it('reports a failed save and keeps the old level', async () => {
+    await start()
+    const save = vi.spyOn(LevelStore.prototype, 'save').mockRejectedValue(new Error('disk full'))
+    try {
+      const res = await call(f, 'POST /api/sets/:id/fill', { id: 'dieselCans' })
+      expect(res.code).toBe(500)
+      expect(res.data).toEqual({ error: 'could not save the fill levels; nothing was changed' })
+      expect(await put(f, 'tanks.fuel.dieselCans.currentVolume', 0.01)).toMatchObject({ statusCode: 500 })
+      expect(latest(f)['tanks.fuel.dieselCans.currentVolume']).toBe(0)
+      expect(((await call(f, 'GET /api/sets/:id', { id: 'dieselCans' })).data as { volume: number }).volume).toBe(0)
+      expect(f.errors.at(-1)).toContain('disk full')
+    } finally {
+      save.mockRestore()
+    }
   })
 
   it('keeps fill levels across restarts and config changes', async () => {
     await start()
-    call(f, 'POST /api/sets/:id/fill', { id: 'dieselCans' })
-    await vi.waitFor(async () => {
-      const saved = JSON.parse(await readFile(join(dir, 'levels.json'), 'utf8'))
-      expect(saved.dieselCans['0-0']).toBe(1)
-    })
+    await call(f, 'POST /api/sets/:id/fill', { id: 'dieselCans' })
+    const saved = JSON.parse(await readFile(join(dir, 'levels.json'), 'utf8'))
+    expect(saved.dieselCans['0-0']).toBe(1)
     plugin.stop()
 
     const changed = structuredClone(config)
@@ -207,7 +246,7 @@ describe('plugin', () => {
 
   it('clears its values on stop, so a removed set does not look current', async () => {
     await start()
-    call(f, 'POST /api/sets/:id/fill', { id: 'petrolCans' })
+    await call(f, 'POST /api/sets/:id/fill', { id: 'petrolCans' })
     plugin.stop()
     const v = latest(f)
     expect(v['tanks.fuel.petrolCans.currentVolume']).toBeNull()
@@ -220,10 +259,9 @@ describe('plugin', () => {
 
   it('answers 503 and rejects PUTs while stopped', async () => {
     await start()
-    const put = f.puts.get('tanks.fuel.dieselCans.currentVolume')!
     plugin.stop()
-    expect(call(f, 'GET /api/sets').code).toBe(503)
-    expect(put('vessels.self', 'x', 0, () => {})).toMatchObject({ statusCode: 404 })
+    expect((await call(f, 'GET /api/sets')).code).toBe(503)
+    expect(await put(f, 'tanks.fuel.dieselCans.currentVolume', 0)).toMatchObject({ statusCode: 404 })
   })
 
   it('starts with a corrupt levels file reported as an error', async () => {

@@ -9,6 +9,13 @@ const canTemplate = document.getElementById('can-template')
 /** Set ids with a request in flight; a refresh must not overwrite their controls. */
 const busy = new Set()
 
+/**
+ * Counts the changes started per set. A refresh whose GET began before a
+ * change may answer after it, with the old levels, so it skips that set.
+ */
+const revisions = new Map()
+const revision = (id) => revisions.get(id) ?? 0
+
 function fmt(litres) {
   return (Math.round(litres * 10) / 10).toLocaleString(undefined, { maximumFractionDigits: 1 })
 }
@@ -112,6 +119,7 @@ function setBusy(id, on) {
 }
 
 async function change(id, path, body) {
+  revisions.set(id, revision(id) + 1)
   setBusy(id, true)
   try {
     renderSet(await post(path, body))
@@ -125,11 +133,15 @@ async function change(id, path, body) {
 }
 
 async function refresh(force = false) {
+  const started = new Map(revisions)
   try {
     const sets = await request('/sets')
     const ids = sets.map((s) => s.id)
     for (const el of [...setsEl.children]) if (!ids.includes(el.dataset.set)) el.remove()
-    for (const set of sets) if (force || !busy.has(set.id)) renderSet(set)
+    for (const set of sets) {
+      if (revision(set.id) !== (started.get(set.id) ?? 0)) continue
+      if (force || !busy.has(set.id)) renderSet(set)
+    }
     if (sets.length === 0) {
       showMessage('No sets yet. Add sets of jerry cans in the plugin configuration (Server → Plugin Config → Jerry Can Tracker).', 'info')
     } else if (messageEl.classList.contains('info') || !force) {

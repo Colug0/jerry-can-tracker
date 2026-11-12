@@ -22,6 +22,12 @@ export interface SetView {
 
 export class NotFound extends Error {}
 export class BadValue extends Error {}
+export class SaveFailed extends Error {}
+
+/** HTTP status for an error from the tracker. */
+export function errorStatus(error: unknown): number {
+  return error instanceof NotFound ? 404 : error instanceof BadValue ? 400 : 500
+}
 
 /** Base path of a set in the data model, e.g. `tanks.fuel.dieselCans`. */
 export function setPath(set: CanSet): string {
@@ -37,6 +43,9 @@ export class Tracker {
     private readonly levels: Levels,
     private readonly store: LevelStore
   ) {}
+
+  private queue: Promise<unknown> = Promise.resolve()
+  private closed = false
 
   find(id: string): CanSet {
     const set = this.sets.find((s) => s.id === id)
@@ -62,31 +71,28 @@ export class Tracker {
   }
 
   /** Sets one can to a fill ratio (0..1). */
-  setCan(id: string, key: string, level: unknown): SetView {
+  setCan(id: string, key: string, level: unknown): Promise<SetView> {
     const set = this.find(id)
     if (!set.cans.some((c) => c.key === key)) throw new NotFound(`unknown can "${key}" in set "${id}"`)
-    this.levels[set.id][key] = ratio(level)
-    return this.changed(set)
+    const r = ratio(level)
+    return this.mutate(set, (current) => ({ ...current, [key]: r }))
   }
 
   /** Sets every can of a set to the same fill ratio (1 = all full). */
-  setAll(id: string, level: unknown): SetView {
+  setAll(id: string, level: unknown): Promise<SetView> {
     const set = this.find(id)
     const r = ratio(level)
-    for (const c of set.cans) this.levels[set.id][c.key] = r
-    return this.changed(set)
+    return this.mutate(set, () => Object.fromEntries(set.cans.map((c) => [c.key, r])))
   }
 
   /** Spreads a total volume in litres over the cans, first cans first. */
-  setVolume(id: string, volume: unknown): SetView {
+  setVolume(id: string, volume: unknown): Promise<SetView> {
     const set = this.find(id)
-    const v = Number(volume)
-    const { capacity } = totals(set, this.levels[set.id])
-    if (typeof volume !== 'number' || !Number.isFinite(v) || v < 0 || v > capacity + 1e-9) {
+    const capacity = set.cans.reduce((sum, c) => sum + c.capacity, 0)
+    if (typeof volume !== 'number' || !Number.isFinite(volume) || volume < 0 || volume > capacity + 1e-9) {
       throw new BadValue(`volume must be between 0 and ${litres(capacity)} litres`)
     }
-    this.levels[set.id] = fillInOrder(set, v)
-    return this.changed(set)
+    return this.mutate(set, () => fillInOrder(set, volume))
   }
 
   publish(sets: CanSet[] = this.sets): void {
@@ -109,6 +115,7 @@ export class Tracker {
    * values are event data and never time out).
    */
   clear(): void {
+    this.closed = true
     const values: PathValue[] = []
     for (const set of this.sets) {
       const base = setPath(set)
@@ -129,13 +136,31 @@ export class Tracker {
       .join(' · ')
   }
 
-  private changed(set: CanSet): SetView {
-    this.publish([set])
-    this.app.setPluginStatus(this.status())
-    this.store.save(this.levels).catch((error: unknown) => {
-      this.app.error(`Could not save fill levels: ${String(error)}`)
-    })
-    return this.view(set)
+  /**
+   * Applies a change once the new levels are saved, so a reported success
+   * survives a restart. Changes run one after another, each on the levels
+   * the previous one left. Invalid input is rejected by the caller before
+   * this, synchronously; the returned promise rejects only with SaveFailed.
+   */
+  private mutate(set: CanSet, next: (current: Record<string, number>) => Record<string, number>): Promise<SetView> {
+    const run = async (): Promise<SetView> => {
+      const levels = next({ ...this.levels[set.id] })
+      try {
+        await this.store.save({ ...this.levels, [set.id]: levels })
+      } catch (error) {
+        this.app.error(`Could not save fill levels: ${String(error)}`)
+        throw new SaveFailed('could not save the fill levels; nothing was changed')
+      }
+      this.levels[set.id] = levels
+      if (!this.closed) {
+        this.publish([set])
+        this.app.setPluginStatus(this.status())
+      }
+      return this.view(set)
+    }
+    const result = this.queue.then(run, run)
+    this.queue = result.catch(() => {})
+    return result
   }
 }
 
