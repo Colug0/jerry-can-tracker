@@ -1,0 +1,52 @@
+{
+  "name": "jerry-can-tracker",
+  "version": "0.0.0",
+  "description": "Track sets of jerry cans (diesel, petrol, water, ...) as extra tanks in Signal K",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "public"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "signalk-node-server-plugin",
+    "signalk-webapp",
+    "signalk-category-utility",
+    "tanks",
+    "fuel",
+    "jerry can"
+  ],
+  "author": "Thomas Christoffel",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Colug0/jerry-can-tracker.git"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "typebox": "^1.4.4"
+  },
+  "devDependencies": {
+    "@signalk/server-api": "^2.35.0",
+    "@types/node": "^24.0.0",
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.12"
+  },
+  "signalk": {
+    "displayName": "Jerry Can Tracker",
+    "appIcon": "./icon.svg"
+  },
+  "homepage": "https://github.com/Colug0/jerry-can-tracker#readme",
+  "bugs": {
+    "url": "https://github.com/Colug0/jerry-can-tracker/issues"
+  }
+}

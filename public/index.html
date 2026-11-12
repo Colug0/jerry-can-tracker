@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Jerry Can Tracker</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="app.css" />
+  </head>
+  <body>
+    <header>
+      <img src="icon.svg" alt="" width="28" height="28" />
+      <h1>Jerry Can Tracker</h1>
+    </header>
+    <main>
+      <p id="message" class="message" hidden></p>
+      <div id="sets"></div>
+    </main>
+    <template id="set-template">
+      <section class="set">
+        <div class="set-head">
+          <div>
+            <h2 class="set-name"></h2>
+            <code class="set-path"></code>
+          </div>
+          <div class="set-total"></div>
+        </div>
+        <div class="bar"><div class="bar-fill"></div></div>
+        <div class="set-actions">
+          <button type="button" data-action="fill">Fill all</button>
+          <button type="button" data-action="empty">Empty all</button>
+          <form class="volume-form">
+            <label>Total <input type="number" min="0" step="0.5" inputmode="decimal" name="volume" /> L</label>
+            <button type="submit">Set</button>
+          </form>
+        </div>
+        <ul class="cans"></ul>
+      </section>
+    </template>
+    <template id="can-template">
+      <li class="can">
+        <div class="can-head">
+          <span class="can-name"></span>
+          <span class="can-volume"></span>
+        </div>
+        <div class="can-controls">
+          <button type="button" data-level="0">Empty</button>
+          <input type="range" min="0" max="100" step="5" aria-label="Fill level in percent" />
+          <button type="button" data-level="1">Full</button>
+        </div>
+      </li>
+    </template>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
