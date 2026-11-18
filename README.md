@@ -23,7 +23,7 @@ records which cans are full, empty or partly filled.
 
 | Setting | Meaning |
 |---|---|
-| Id | Last part of the Signal K path, unique across all sets. Letters, digits and `_`, starting with a letter. |
+| Id | Last part of the Signal K path, unique across all sets. Letters, digits and `_`, not starting with `_`; a number such as `1` works too. |
 | Name | Tank name shown in apps, for example "Diesel jerry cans". |
 | Tank kind | Signal K tank group: `fuel`, `freshWater`, `wasteWater`, `blackWater`, `lubrication`, `gas`, `ballast`, `liveWell`, `baitWell`. |
 | Contents | Optional: published as the tank type (`diesel`, `petrol`, `fresh water`, …). |
@@ -43,6 +43,10 @@ uses. A set with kind `fuel` and id `dieselCans` gives:
 | `tanks.fuel.dieselCans.capacity` | m³ | Sum of all cans |
 | `tanks.fuel.dieselCans.currentVolume` | m³ | Sum of what is in the cans |
 | `tanks.fuel.dieselCans.currentLevel` | ratio | Volume divided by capacity |
+
+Pick an id no other source uses under the same kind. If a tank sensor
+already reports `tanks.fuel.0`, a set with id `0` would mix its values into
+that tank.
 
 Single cans are not published. The values change only when someone changes a
 fill level, so the plugin marks them as event data: the server never treats

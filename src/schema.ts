@@ -29,7 +29,7 @@ export const FLUID_TYPES = [
   'rum'
 ] as const
 
-export const SET_ID_PATTERN = '^[A-Za-z][A-Za-z0-9_]*$'
+export const SET_ID_PATTERN = '^[A-Za-z0-9][A-Za-z0-9_]*$'
 
 const CanSchema = Type.Object({
   name: Type.String({ title: 'Name', description: 'For example "Red 20 L"', default: 'Jerry can' }),
@@ -48,7 +48,7 @@ const SetSchema = Type.Object({
   id: Type.String({
     title: 'Id',
     description:
-      'Last part of the Signal K path, unique across all sets: letters, digits and _, starting with a letter. "dieselCans" with kind "fuel" gives tanks.fuel.dieselCans',
+      'Last part of the Signal K path, unique across all sets: letters, digits and _, not starting with _. "dieselCans" with kind "fuel" gives tanks.fuel.dieselCans, "1" gives tanks.fuel.1. Do not use the id of a tank a sensor already reports.',
     pattern: SET_ID_PATTERN
   }),
   name: Type.String({ title: 'Name', description: 'Shown in apps as the tank name, for example "Diesel jerry cans"' }),
