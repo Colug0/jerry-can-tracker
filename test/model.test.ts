@@ -26,7 +26,7 @@ describe('buildSets', () => {
 
   it('rejects invalid ids, duplicate paths and sets without cans', () => {
     const { sets, errors } = buildSets([
-      { ...diesel, id: '1bad' },
+      { ...diesel, id: '_bad' },
       diesel,
       { ...diesel, name: 'Twin' },
       { ...diesel, id: 'empty', cans: [] },
@@ -35,6 +35,21 @@ describe('buildSets', () => {
     expect(sets.map((s) => s.id)).toEqual(['dieselCans'])
     expect(errors).toHaveLength(5) // the zero-capacity set reports its can and "no cans"
     expect(errors[1]).toContain('id "dieselCans" is used twice')
+  })
+
+  it('accepts numeric ids', () => {
+    const { sets, errors } = buildSets([
+      { ...diesel, id: '1' },
+      { ...diesel, id: '2b', name: 'Two' }
+    ])
+    expect(errors).toEqual([])
+    expect(sets.map((s) => s.id)).toEqual(['1', '2b'])
+  })
+
+  it('rejects ids that are not a single path segment', () => {
+    const { sets, errors } = buildSets(['', '_x', 'a.b', 'a-b', 'a b', 'ä'].map((id) => ({ ...diesel, id })))
+    expect(sets).toEqual([])
+    expect(errors).toHaveLength(6)
   })
 
   it('rejects the same id under a different tank kind', () => {

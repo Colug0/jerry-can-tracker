@@ -172,6 +172,15 @@ describe('plugin', () => {
     expect(await put(f, 'tanks.fuel.petrolCans.currentVolume', 0.02)).toMatchObject({ statusCode: 400 })
   })
 
+  it('runs a set with a numeric id', async () => {
+    await start({ sets: [{ ...config.sets[1], id: '1' }] })
+    expect(latest(f)['tanks.fuel.1.capacity']).toBeCloseTo(0.01)
+    expect(await put(f, 'tanks.fuel.1.currentLevel', 1)).toMatchObject({ statusCode: 200 })
+    expect(latest(f)['tanks.fuel.1.currentVolume']).toBeCloseTo(0.01)
+    const res = await call(f, 'POST /api/sets/:id/empty', { id: '1' })
+    expect(res.data).toMatchObject({ id: '1', path: 'tanks.fuel.1', volume: 0 })
+  })
+
   it('serves the webapp API with the right access levels', async () => {
     await start()
     expect(f.routes.get('GET /api/sets')!.access).toBe('readonly')
