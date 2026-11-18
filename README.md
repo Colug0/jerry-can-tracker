@@ -57,6 +57,8 @@ them as stale.
 Open **Jerry Can Tracker** from the server's **Webapps** page. For each set it
 shows the total and every can:
 
+![The webapp with three sets](docs/screenshots/webapp.png)
+
 - **Fill all** / **Empty all** for the whole set.
 - **Total … L → Set** spreads a volume over the cans in the configured order:
   the first cans are full, one is partly filled, the rest are empty.
